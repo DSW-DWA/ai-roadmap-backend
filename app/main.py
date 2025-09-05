@@ -1,12 +1,12 @@
 from typing import List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from .models import Roadmap, RewriteRequest
 from .logic import generate_sql_roadmap, rewrite_roadmap_with_prompt
-from .utils import validate_files, extract_text_blobs
+from .models import RewriteRequest, Roadmap
+from .utils import extract_text_blobs, validate_files
 
 app = FastAPI(
     title='SQL Roadmap API',

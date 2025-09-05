@@ -1,5 +1,6 @@
 from typing import List
-from fastapi import UploadFile, HTTPException, status
+
+from fastapi import HTTPException, UploadFile, status
 
 MAX_FILES = 5
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB

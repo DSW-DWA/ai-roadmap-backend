@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import List
+
 import re
+from typing import List
 
-from .models import Roadmap, Milestone, Resource
-
+from .models import Milestone, Resource, Roadmap
 
 BASIC_MILESTONES = [
     Milestone(
