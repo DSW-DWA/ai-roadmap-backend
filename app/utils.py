@@ -7,10 +7,14 @@ MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 async def validate_files(files: List[UploadFile]) -> None:
     if not files:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Нужно загрузить хотя бы один файл.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail='Нужно загрузить хотя бы один файл.'
+        )
     if len(files) > MAX_FILES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Можно не более {MAX_FILES} файлов.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Можно не более {MAX_FILES} файлов.',
+        )
 
     # Проверяем каждый файл по размеру
     for f in files:
@@ -19,7 +23,7 @@ async def validate_files(files: List[UploadFile]) -> None:
         if len(content) > MAX_FILE_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"Файл {f.filename} превышает лимит 5 МБ."
+                detail=f'Файл {f.filename} превышает лимит 5 МБ.',
             )
         # вернём указатель в начало, если кто-то захочет перечитать
         await f.seek(0)
@@ -34,14 +38,19 @@ async def extract_text_blobs(files: List[UploadFile]) -> List[str]:
     """
     blobs = []
     for f in files:
-        name = (f.filename or "").lower()
-        if name.endswith(".txt") or name.endswith(".md") or name.endswith(".csv") or name.endswith(".sql"):
+        name = (f.filename or '').lower()
+        if (
+            name.endswith('.txt')
+            or name.endswith('.md')
+            or name.endswith('.csv')
+            or name.endswith('.sql')
+        ):
             data = await f.read()
             try:
-                text = data.decode("utf-8", errors="ignore")
+                text = data.decode('utf-8', errors='ignore')
             except Exception:
-                text = ""
+                text = ''
             blobs.append(text[:200_000])
         else:
-            blobs.append(f"FILE:{f.filename}")
+            blobs.append(f'FILE:{f.filename}')
     return blobs
