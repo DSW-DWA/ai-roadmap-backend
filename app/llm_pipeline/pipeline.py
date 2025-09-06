@@ -8,6 +8,7 @@ from .response_model import KnowledgeMap
 async def build_map(
     client: AsyncOpenAI, model: str, material: dict[str, str], language: str = 'ru'
 ) -> KnowledgeMap:
+    """Build knowledge map from list of educational materials using OpenAI model"""
     prompt = build_map_prompt(material, language)
 
     response = await client.chat.completions.parse(
@@ -16,4 +17,7 @@ async def build_map(
         response_format=KnowledgeMap,
     )
 
-    return response.choices[0].message  # pyright: ignore[reportReturnType]
+    content = response.choices[0].message
+    assert content.parsed
+
+    return content.parsed

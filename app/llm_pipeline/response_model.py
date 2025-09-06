@@ -1,22 +1,7 @@
 from inspect import cleandoc
-
 from pydantic import BaseModel, Field
 
-
-class Concept(BaseModel):
-    """A Concept is a distinct unit of knowledge that represents an idea, skill, or topic which can be taught, learned, or connected to other concepts."""
-
-    name: str = Field(
-        description=cleandoc("""
-            Every Concept should have a name so it can be easily identified and referenced
-        """)
-    )
-    consist_of: list['Concept'] | None = Field(
-        default=None,
-        description=cleandoc("""
-            Concept may stand alone or be composed of sub-concepts, forming part of a larger knowledge structure.
-        """),
-    )
+type Concept = dict[str, list[Concept | str]]
 
 
 class KnowledgeMap(BaseModel):
@@ -24,10 +9,22 @@ class KnowledgeMap(BaseModel):
     A KnowledgeMap is a structured representation of Concepts and the relationships between them.
 
     It models both hierarchical and relational dependencies among Concepts.
+
+    A Concept is a distinct unit of knowledge that represents an idea, skill, or topic which can be taught, learned, or connected to other concepts.
+    Every Concept must have an unique name so it can be clearly identified and referenced.
     """
 
-    concepts: list[Concept] = Field(
-        description="""The set of all Concepts included in this KnowledgeMap"""
+    hierarchy: list[Concept] = Field(
+        description=cleandoc("""
+            A mapping of hierarchical relationships between Concepts.
+            Each key is the name of the concept
+            and each value is sub-concept that forms part of the current concept.
+            This is recursive:
+                - Concept can be composed of sub-concepts (object), forming part of a larger knowledge structure.
+                - or may stand alone (base case, string)
+
+            Note: All concepts existing in knowledge map must be present here.
+        """)
     )
 
     prerequisites: dict[str, str] = Field(

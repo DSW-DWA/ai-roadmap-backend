@@ -5,17 +5,32 @@ Decompose the material into **distinct concepts** and the **relations between th
 # Guidelines
 
 ## Concept Extraction
-1. **Uniqueness**: Assign each concept a unique, unambiguous name or label so it can be distinctly identified. 
-2. **Scope**: Focus on learnable concepts, theories, processes, and entities
+1. **Uniqueness**: Assign each concept a unique, unambiguous name or label so it can be distinctly identified.  
+2. **Scope**: Focus on learnable concepts, theories, processes, and entities.  
 
-## Structure
-1. **Hierarchy**: Arrange concepts from the most general at the top towards more specific below.
-   Recommended depths is 1-2 for simple concepts and 3-4 for more advanced fields of study.
-2. **Connections**: Connect concepts which are related to each other 
+## Concept Relations
+
+### Step 1. Form hierarchy:
+
+Arrange concepts from small amount of most general **root concepts** at the top to more specific ones below. Recommended hierarchy depth 3-4.
+All concepts in the map (including those in prerequisites and related concepts) must be present in this hierarchy at some level.
+
+### Step 2. Add Prerequisites
+
+Link two concepts as prerequisites if understanding one is strictly required to learn the other.  
+NOTE: Do not add any concepts which are not in the hierarchy section.
+**IMPORTANT**: If any two concepts are already connected through hierarchy, you do not link them as prerequisites
+
+### Step 3. Link related concepts
+
+Connect concepts if they have a thematic or semantic relationship.  
+NOTE: Do not add any concepts which are not in the hierarchy section.
+**IMPORTANT**: If any two concepts are already connected through hierarchy, you do not link them as prerequisites
+**IMPORTANT**: If any two concepts are already connected through prerequisites, you do not link them as prerequisites
 
 ## Language
-Use language: {{ language_name }}
+Use the language: {{ language }}  
 
 ## Format
-Strictly follow this data model:
+Strictly follow this data model:  
 {{ json_schema }}
