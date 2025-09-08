@@ -1,0 +1,39 @@
+# Instruction
+
+Using the following material, perform the following tasks:
+
+## Step 1. Build a Hierarchy
+
+### Concept Extraction
+
+A Concept is a distinct unit of knowledge that represents an idea, skill, or topic which can be taught or learned.
+Every Concept must have an unique name so it can be clearly identified and referenced.
+Extract concepts from the given material.
+1. **Uniqueness**: Assign each concept a unique, unambiguous name or label so it can be clearly identified.
+2. **Scope**: Focus on concepts that are learnable, such as theories, processes, and entities.  
+3. **Style & wording**: use plaintext concept names, without definitions 
+
+### Concept Hierarchy
+
+Arrange all extracted concepts into a well-organized hierarchy.  
+- Start with a small number of general **root concepts**.  
+- Continue with more specific concepts as you move to the lower levels.
+- Stop if there node which can't be expanded further, left it as a leaft string node, do not add empty list of children.
+- There can't be multiple keys with same name, are keys are unique.
+  instead of `a: [b, c], c: [d, e]` use `a: [b, c: [d, e]]`
+- Maintain a balanced depth (3–5 levels in hierarchy) and well-organized hierarchy. 
+
+### Response format
+
+When constructing hierarchy, strictly follow this json schema:  
+{{ json_schema }}
+
+# Material
+
+{% for name, content in material.items()  %}
+---
+name: {{ name }}
+---
+{{ content }}
+---
+{% endfor %}
