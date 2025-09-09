@@ -1,12 +1,20 @@
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass
+from functools import reduce
 from inspect import cleandoc
+from itertools import chain
+from operator import or_
+from typing import Iterable, Literal
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 from app.llm_pipelines.build_map.prompts import (
     step_one_hierarchy_prompt,
     step_three_related_concepts_prompt,
+    step_two_add_sources,
 )
 
 type ConceptsHierarchyNode = dict[str, list[ConceptsHierarchyNode | str]]
@@ -37,10 +45,66 @@ class ConceptPrerequisites(BaseModel):
     )
 
 class ConceptSources(BaseModel):
-    link: str = Field(
-        description=cleandoc("Link in the format file-path#Header-1/Header-2"),
-        examples=["docs/tutorial.md#Quick-start/Setup/Requirements"]
+    sources: dict[str, str] = Field(
+        description=cleandoc("""
+            A mapping between concepts and sources, where key is unique concept name,
+            and value is a link in the format file-path#Header-1/Header-2
+        """),
     )
+
+def get_markdown_header_paths(markdown_text: str) -> list[str]:
+    """
+    Parses a markdown string to find all header lines and returns a list of slash-separated paths for the leaf headers.
+
+    A header is considered a "leaf" if it is not immediately followed by a
+    header of a deeper level.
+    """
+    
+    header_pattern = re.compile(r'^(#{1,6})\s+(.*)', re.MULTILINE)
+    matches = header_pattern.finditer(markdown_text)
+
+    headers = []
+    for match in matches:
+        level = len(match.group(1))
+        text = match.group(2).strip().replace(' ', '-')
+        headers.append({'level': level, 'text': text})
+
+    if not headers:
+        return []
+
+    result_paths = []
+    current_path = []
+
+    for i, header in enumerate(headers):
+        level = header['level']
+        text = header['text']
+        
+        while len(current_path) >= level:
+            current_path.pop()
+        current_path.append(text)
+
+        is_leaf = False
+        is_last_header = (i == len(headers) - 1)
+        
+        if is_last_header:
+            is_leaf = True
+        else:
+            next_header_level = headers[i + 1]['level']
+            if next_header_level <= level:
+                is_leaf = True
+        
+        if is_leaf:
+            result_paths.append("/".join(current_path))
+
+    return result_paths
+
+def get_allowed_sources(material):
+    values = list(material.keys())
+    for name, content in material.items():
+        for header_path in get_markdown_header_paths(content):
+            values.append(f"{name}#{header_path}")
+
+    return values
 
 class RelatedConcepts(BaseModel):
     """Concepts which are related to each other"""
@@ -65,16 +129,22 @@ def _flatten_hierarchy(node: dict|list|str):
         case str():
             yield node
 
-#def _get_children(node: dict|list|str):
-#    match node:
-#        case list():
-#        case dict():
-#            return {node.:
-#        case str():
-#            return {node: []}
-#
-#def get_strict_prerequisites_schema(allowed_pairs: dict[str, set[str]]):
-#    pass
+# def _get_children(node: dict|list|str, acc = None):
+#     acc = acc or {}
+#     match node:
+#         case list():
+#             return chain(
+#                 *_get_children(item, acc) for item in node
+#             )
+#             
+#         case dict():
+#             for key, item in node.items():
+#                 acc[key] = _get_children(item)
+#                 acc[key] = list(chain.from_iterable(_get_children(item, acc)))
+# 
+#             return {key :
+#         case str():
+#             acc[node] = []
 
 
 class BuildMapPipeline:
@@ -114,12 +184,45 @@ class BuildMapPipeline:
             messages, # pyright: ignore[reportReturnType]
             message.parsed
         )
+    
+    async def _add_sources(
+        self,
+        messages: list[ChatCompletionMessageParam],
+        concepts: Iterator[str],
+        material: dict[str, str]
+    ) -> tuple[list[ChatCompletionMessageParam], ConceptSources]:
+        messages += step_two_add_sources(response_model=ConceptSources)
+
+        response = await self._client.chat.completions.parse(
+            model=self._model,
+            messages=messages,
+            response_format=ConceptSources,
+            temperature=0.0,
+            seed=42
+        )
+
+        message = response.choices[0].message
+        assert message.parsed
+        assert message.content
+       
+        sources = message.parsed
+        allowed_sources = get_allowed_sources(material)
+        for concept in list(sources.sources):
+            if concept not in concepts or sources.sources[concept] not in allowed_sources:
+                sources.sources.pop(concept)
+        
+        messages += [{'role': 'assistant', 'content': sources.model_dump_json()}]
+
+        return (
+            messages, # pyright: ignore[reportReturnType]
+            message.parsed
+        )
 
     async def _link_related(
         self,
         messages: list[ChatCompletionMessageParam]
-    ) -> tuple[list[ChatCompletionMessageParam], ConceptPrerequisites]:
-        messages += step_three_related_concepts_prompt(json_schema=RelatedConcepts.model_json_schema())
+    ) -> tuple[list[ChatCompletionMessageParam], RelatedConcepts]:
+        messages += step_three_related_concepts_prompt(response_model=RelatedConcepts)
 
         response = await self._client.chat.completions.parse(
             model=self._model,
@@ -139,26 +242,59 @@ class BuildMapPipeline:
             messages, # pyright: ignore[reportReturnType]
             message.parsed
         )
-        ...
+    
+    #async def _add_descriptions(
+    #    self,
+    #    messages: list[ChatCompletionMessageParam]
+    #) -> tuple[list[ChatCompletionMessageParam], ConceptDescriptions]:
+        return messages, ConceptDescriptions(**{})
 
     async def build(
         self, material: dict[str, str],
         language: str = 'ru'
     ):
         messages, hierarchy = await self._build_hierarchy(material, language=language)
+        concepts = set(_flatten_hierarchy(hierarchy.hierarchy))
+        messages, sources = await self._add_sources(messages, concepts, material)
+        messages, related = await self._link_related(messages) 
+       
+        def build_concepts(node):
+            match node:
+                case str():
+                    return [
+                        Concept(
+                            title=node,
+                            description=None,
+                            related=related.related.get(node),
+                            source=sources.sources.get(node),
+                            consist_of=None
+                        )
+                    ]
+                case dict():
+                    return [
+                        Concept(
+                            title=k,
+                            description=None,
+                            related=related.related.get(k),
+                            source=sources.sources.get(k),
+                            consist_of=chain.from_iterable(
+                                build_concepts(v) for v in node[k] 
+                            )
+                        )
+                        for k in node
+                    ]
+
+            return concepts
         
-        flattened = set(_flatten_hierarchy(hierarchy.hierarchy))
-        # parents = 
-        allowed_prerequisite_pairs = {
-            key: flattened - {key} for key in flattened
-        }
+        return KnowledgeMap(concepts=build_concepts(hierarchy.hierarchy)) 
 
+class Concept(BaseModel):
+    title: str
+    description: str|None
+    related: list[str]|None
+    source: str|None
 
-        _, prerequisites = await self._link_related(messages) 
-        return hierarchy, prerequisites
+    consist_of: list['Concept']|None
 
-# async def build_map(
-#     client: AsyncOpenAI, model: str, material: dict[str, str], language: str = 'ru'
-# ) -> KnowledgeMap:
-#     """Build knowledge map from list of educational materials using OpenAI model"""
-# 
+class KnowledgeMap(BaseModel):
+    concepts: list[Concept]

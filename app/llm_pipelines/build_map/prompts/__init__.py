@@ -35,13 +35,25 @@ def step_one_hierarchy_prompt(
         },
     ]
 
-def step_three_related_concepts_prompt(*, json_schema: dict[str, Any]) -> list[ChatCompletionMessageParam]:
-    """Creates prompt for linking related concepts"""
-    step_two_template = jinja_env.get_template('step-3-related-concepts.md.jinja')
+def step_two_add_sources(*, response_model: type[BaseModel]) -> list[ChatCompletionMessageParam]:
+    """Creates prompt for adding sources"""
+    step_two_template = jinja_env.get_template('step-2-add-sources.md.jinja')
     return [
         {
             'role': 'user',
-            'content': step_two_template.render(json_schema=json_schema)
+            'content': step_two_template.render(json_schema=response_model.model_json_schema())
+        }
+    ]
+
+
+
+def step_three_related_concepts_prompt(*, response_model: type[BaseModel]) -> list[ChatCompletionMessageParam]:
+    """Creates prompt for linking related concepts"""
+    step_three_template = jinja_env.get_template('step-3-related-concepts.md.jinja')
+    return [
+        {
+            'role': 'user',
+            'content': step_three_template.render(json_schema=response_model.model_json_schema())
         }
     ]
 

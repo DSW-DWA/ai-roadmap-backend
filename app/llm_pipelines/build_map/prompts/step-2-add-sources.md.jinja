@@ -1,11 +1,16 @@
 ## Step 2. Add sources 
 
-For each concept in the hierarchy, write its source file.
+For each concept in the hierarchy, add reference to source file where this concepts is takend from.
+If file is not a well-structured markdown, or a makrown file without headers, write reference as:
+`file.md`
+If a file is a well-structured markdown with headings, write both name and headers-path:
+`file.md#Quick-start/Setup/Requirements`
+
 Use the file path from the name property in the YAML metadata block for each file.
-Note: If the file appears to be a well-structured Markdown document with proper headings, add #Header-1#...#Header-n to refer to the very specific section related to the concept.
 
 ### Response format 
 Follow this json schema:
+
 ```json
 {{ json_schema }}
 ```

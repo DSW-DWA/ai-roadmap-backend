@@ -22,11 +22,8 @@ async def test():
     build_map_pipeline = BuildMapPipeline(
         client=client, model=settings.model_name
     )
-    hierarchy, prerequisites = await build_map_pipeline.build(material)
-    
-    print(hierarchy.model_dump_json())
-    print(prerequisites.model_dump_json())
-    # print(knowledge_map.model_dump_json(exclude_none=True))
+    knowledge_map = await build_map_pipeline.build(material)
+    print(knowledge_map.model_dump_json())
 
 
 asyncio.run(test())
