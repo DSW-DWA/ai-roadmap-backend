@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field
 
 
-
 class KnowledgeMap(BaseModel):
     prerequisites: dict[str, str] = Field(
         description=cleandoc("""
