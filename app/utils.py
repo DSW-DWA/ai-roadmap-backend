@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from fastapi import HTTPException, UploadFile, status
 
@@ -55,3 +55,31 @@ async def extract_text_blobs(files: List[UploadFile]) -> List[str]:
         else:
             blobs.append(f'FILE:{f.filename}')
     return blobs
+
+
+async def extract_text_blobs_to_dict(files: List[UploadFile]) -> Dict[str, str]:
+    """
+    Extract text from files and return a dictionary where:
+    - key: filename
+    - value: extracted text content
+    """
+    material_dict = {}
+    
+    for f in files:
+        name = (f.filename or '').lower()
+        if (
+            name.endswith('.txt')
+            or name.endswith('.md')
+            or name.endswith('.csv')
+            or name.endswith('.sql')
+        ):
+            data = await f.read()
+            try:
+                text = data.decode('utf-8', errors='ignore')
+            except Exception:
+                text = ''
+            material_dict[f.filename] = text[:200_000]
+        else:
+            material_dict[f.filename] = f'FILE:{f.filename}'
+    
+    return material_dict

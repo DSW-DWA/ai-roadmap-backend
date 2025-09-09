@@ -1,12 +1,23 @@
 from typing import List
-
+from app.settings import settings
+from openai import AsyncOpenAI
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+from app.llm_pipelines import BuildMapPipeline
 from .logic import generate_sql_roadmap, rewrite_roadmap_with_prompt
 from .models import RewriteRequest, Roadmap
-from .utils import extract_text_blobs, validate_files
+from .utils import extract_text_blobs, extract_text_blobs_to_dict, validate_files
+
+
+client = AsyncOpenAI(
+    api_key=settings.yandex_cloud_api_key,
+    base_url=str(settings.openai_base_url),
+)
+
+build_map_pipeline = BuildMapPipeline(
+    client=client, model=settings.model_name
+)
 
 app = FastAPI(
     title='SQL Roadmap API',
@@ -34,9 +45,9 @@ async def roadmap_from_files(
     files: List[UploadFile] = File(..., description='До 5 файлов, ≤5 МБ каждый'),
 ):
     await validate_files(files)
-    blobs = await extract_text_blobs(files)
-    roadmap = generate_sql_roadmap(blobs)
-    return JSONResponse(content=roadmap.model_dump(), status_code=status.HTTP_200_OK)
+    material = await extract_text_blobs_to_dict(files)
+    knowledge_map = await build_map_pipeline.build(material)
+    return JSONResponse(content=knowledge_map.model_dump(), status_code=status.HTTP_200_OK)
 
 
 @app.post('/roadmap/rewrite', response_model=Roadmap, summary='Переписать роадмап по промпту')
