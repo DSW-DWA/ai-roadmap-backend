@@ -1,23 +1,23 @@
 from typing import List
-from app.settings import settings
-from openai import AsyncOpenAI
+
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.llm_pipelines import BuildMapPipeline
-from .logic import generate_sql_roadmap, rewrite_roadmap_with_prompt
-from .models import RewriteRequest, Roadmap
-from .utils import extract_text_blobs, extract_text_blobs_to_dict, validate_files
+from openai import AsyncOpenAI
 
+from app.llm_pipelines import BuildMapPipeline
+from app.settings import settings
+
+from .logic import rewrite_roadmap_with_prompt
+from .models import RewriteRequest, Roadmap
+from .utils import extract_text_blobs_to_dict, validate_files
 
 client = AsyncOpenAI(
     api_key=settings.yandex_cloud_api_key,
     base_url=str(settings.openai_base_url),
 )
 
-build_map_pipeline = BuildMapPipeline(
-    client=client, model=settings.model_name
-)
+build_map_pipeline = BuildMapPipeline(client=client, model=settings.model_name)
 
 app = FastAPI(
     title='SQL Roadmap API',

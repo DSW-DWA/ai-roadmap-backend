@@ -64,7 +64,7 @@ async def extract_text_blobs_to_dict(files: List[UploadFile]) -> Dict[str, str]:
     - value: extracted text content
     """
     material_dict = {}
-    
+
     for f in files:
         name = (f.filename or '').lower()
         if (
@@ -81,5 +81,5 @@ async def extract_text_blobs_to_dict(files: List[UploadFile]) -> Dict[str, str]:
             material_dict[f.filename] = text[:200_000]
         else:
             material_dict[f.filename] = f'FILE:{f.filename}'
-    
+
     return material_dict

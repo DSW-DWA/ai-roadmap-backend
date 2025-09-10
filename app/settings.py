@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     yandex_cloud_folder: str
     yandex_cloud_api_key: str
     model_name: str
+    model_name_lite: str
     openai_base_url: HttpUrl
 
 

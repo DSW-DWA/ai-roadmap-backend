@@ -1,4 +1,14 @@
-## Step 3. Link related concepts
+# Material
+
+{% for name, content in material.items()  %}
+---
+name: {{ name }}
+---
+{{ content }}
+---
+{% endfor %}
+
+# Instruction
 
 Link any two concepts if they have a thematic or semantic relationship.
 This is usually used to link any concepts between hierarchies.

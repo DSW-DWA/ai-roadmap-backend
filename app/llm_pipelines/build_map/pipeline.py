@@ -1,5 +1,4 @@
 import re
-from collections.abc import Iterable
 from inspect import cleandoc
 from itertools import chain
 
@@ -8,26 +7,40 @@ from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, Field
 
 from app.llm_pipelines.build_map.prompts import (
-    step_one_hierarchy_prompt,
-    step_three_related_concepts_prompt,
-    step_two_add_sources,
+    hierarchy_with_sources_prompt,
+    # step_two_add_sources,
 )
 
-type ConceptsHierarchyNode = dict[str, list[ConceptsHierarchyNode | str]]
+type ConceptHierarchy = dict[str, 'ConceptHierarchyNode']
 
 
-class ConceptsHierarchy(BaseModel):
-    """Concepts organized into hierarchical structure"""
+class ConceptHierarchyNode(BaseModel):
+    """Single item in concepts hierarhy"""
 
-    hierarchy: ConceptsHierarchyNode = Field(
+    sources: list[str] = Field(
         description=cleandoc("""
-            A mapping of hierarchical relationships between concepts.  
-            Each key is the name of a concept and each value is a list of sub-concepts.  
+            Each value is a link in the format file-path or file-path#Header-1/Header-2
+        """),
+    )
 
-            This is recursive:  
-            - A concept can be composed of sub-concepts (objects), forming part of a larger knowledge structure.  
-            - Or it may stand alone (base case, string).
-            - If concepts is leaf node, write it as string, do not add empty list of childs
+    consists_of: ConceptHierarchy | None = Field(
+        default=None,
+        description=cleandoc(""" 
+            Is a dictionary, with concepts as keys and their data as values.
+
+            This makes model recustive:
+            - A concept can be composed of sub-concepts, making one step into recursion. In this case value of consist_of will be a dictionary with sub-concepts.
+            - Or it may stand alone (base case) as a leaf node. If concepts is leaf node, i.e has no sub-concepts, consists_of is null.
+        """),
+    )
+
+
+class ConceptHierarchyModel(BaseModel):
+    """Model for hierarchically-organized concepts"""
+
+    hierarchy: ConceptHierarchy = Field(
+        description=cleandoc("""
+            Mapping for concepts, key is a concepts name, and value is data for this concept.
         """)
     )
 
@@ -43,13 +56,20 @@ class ConceptPrerequisites(BaseModel):
     )
 
 
-class ConceptSources(BaseModel):
-    sources: dict[str, str] = Field(
+class RelatedConcepts(BaseModel):
+    """Concepts which are related to each other"""
+
+    related: dict[str, list[str]] = Field(
         description=cleandoc("""
-            A mapping between concepts and sources, where key is unique concept name,
-            and value is a link in the format file-path#Header-1/Header-2
-        """),
+            A mapping, where each key is a concept and value is concepts related to it.
+            This is used to mark cross-hierarchical relationship.
+        """)
     )
+
+
+def format_header(header: str) -> str:
+    """Convert header into slug for source"""
+    return header.replace(' ', '').replace('(', '').replace(')', '')
 
 
 def get_markdown_header_paths(markdown_text: str) -> list[str]:
@@ -94,12 +114,13 @@ def get_markdown_header_paths(markdown_text: str) -> list[str]:
                 is_leaf = True
 
         if is_leaf:
-            result_paths.append('/'.join(current_path))
+            result_paths.append('/'.join(map(format_header, current_path)))
 
     return result_paths
 
 
 def get_allowed_sources(material):
+    """Get all possible sources from material, both in {filename} and {filename}#{header_path} format"""
     values = list(material.keys())
     for name, content in material.items():
         for header_path in get_markdown_header_paths(content):
@@ -108,153 +129,195 @@ def get_allowed_sources(material):
     return values
 
 
-class RelatedConcepts(BaseModel):
-    """Concepts which are related to each other"""
+def clear_sources(hierarchy: ConceptHierarchy, allowed_sources: list[str]) -> ConceptHierarchy:
+    """Remove non-existing sources"""
+    allowed_sources_lookup = set(allowed_sources)
+    new_hierarchy = hierarchy.copy()
 
-    related: dict[str, list[str]] = Field(
-        description=cleandoc("""
-            A mapping, where each key is a concept and value is concepts related to it.
-            This is used to mark cross-hierarchical relationship.
-        """)
-    )
+    def _clear(hierarchy: ConceptHierarchy):
+        for concept in hierarchy.values():
+            if not concept.consists_of:
+                return
+            concept.sources = list(
+                filter(lambda s: s in allowed_sources_lookup, concept.sources)
+            )
+            _clear(concept.consists_of)
 
+    _clear(new_hierarchy)
 
-def flatten_hierarchy(node: dict | list | str):
-    match node:
-        case list():
-            for item in node:
-                yield from flatten_hierarchy(item)
-        case dict():
-            for key, value in node.items():
-                yield key
-                yield from flatten_hierarchy(value)
-        case str():
-            yield node
+    return new_hierarchy
 
 
-def get_children(node: dict | str, acc=None):
-    acc = acc or {}
-    match node:
-        case str():
-            return acc, [node]
-
-        case dict():
-            children = []
-            for k, v in node.items():
-                children.append(k)
-                acc[k] = list(chain.from_iterable(get_children(item, acc)[1] for item in v))
-                children.extend(acc[k])
-
-            return acc, children
+def flatten_hierarchy(hierarchy: ConceptHierarchy) -> set[str]:
+    """Extract all unique concept names from a ConceptHierarchy."""
+    concepts = set()
+    for concept_name, node in hierarchy.items():
+        concepts.add(concept_name)
+        if node.consists_of:
+            concepts.update(flatten_hierarchy(node.consists_of))
+    return concepts
 
 
-def get_parents(node: dict | str, path=None, acc=None):
-    path = path or []
-    acc = acc or {}
-    match node:
-        case str():
-            acc[node] = path
-            return acc
-        case dict():
-            for k, v in node.items():
-                acc[k] = path
-                for item in v:
-                    get_parents(item, path + [k], acc)
-            return acc
+def get_parents_map(hierarchy: ConceptHierarchy) -> dict[str, list[str]]:
+    """
+    Generates a map where each key is a concept name and the value is a list of its parent concepts, tracing back to the root.
+
+    Parameters
+    ----------
+        hierarchy: The top-level concepts hierarchy dictionary.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        A dictionary mapping each concept to its list of parents.
+    """
+    parents_map: dict[str, list[str]] = {}
+
+    def _traverse(sub_hierarchy: ConceptHierarchy, current_path: list[str]):
+        if not sub_hierarchy:
+            return
+
+        for concept_name, node_data in sub_hierarchy.items():
+            # The current path represents the parents of this concept.
+            parents_map[concept_name] = current_path
+
+            # If this node has sub-concepts, recurse deeper.
+            if node_data.consists_of:
+                # The new path for the children includes the current concept.
+                new_path = current_path + [concept_name]
+                _traverse(node_data.consists_of, new_path)
+
+    _traverse(hierarchy, [])
+    return parents_map
 
 
-def clean_related_concepts(hierarchy: ConceptsHierarchy, related: RelatedConcepts):
-    existing = set(flatten_hierarchy(hierarchy.hierarchy))
-    children, _ = get_children(hierarchy.hierarchy)
-    parents = get_parents(hierarchy.hierarchy)
+def get_children_map(hierarchy: ConceptHierarchy) -> dict[str, list[str]]:
+    """
+    Generates a map where each key is a concept name and the value is a flat list of all its descendant concepts (children, grandchildren, etc.).
 
-    for key, values in list(related.related.items()):
-        new_values = filter(
-            lambda v: v in existing,
-            set(values or []) - set(children.get(key, [])) - set(parents.get(key, [])),
-        )
-        new_values = list(new_values) or None
-        if not new_values:
-            related.related.pop(key)
-        else:
-            related.related[key] = new_values
+    Parameters
+    ----------
+        hierarchy: The top-level concepts hierarchy dictionary.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        A dictionary mapping each concept to its flat list of descendants.
+    """
+    children_map: dict[str, list[str]] = {}
+
+    def _traverse(sub_hierarchy: ConceptHierarchy) -> list[str]:
+        # This list will include all concepts at the current level and below.
+        all_concepts_in_subtree: list[str] = []
+
+        if not sub_hierarchy:
+            return all_concepts_in_subtree
+
+        for concept_name, node_data in sub_hierarchy.items():
+            # Add the current concept to the list for this subtree.
+            all_concepts_in_subtree.append(concept_name)
+
+            # If the node has children, process them recursively.
+            if node_data.consists_of:
+                # The returned list contains all descendants of the current node.
+                descendants = _traverse(node_data.consists_of)
+                children_map[concept_name] = descendants
+                all_concepts_in_subtree.extend(descendants)
+            else:
+                # Leaf nodes have no children.
+                children_map[concept_name] = []
+
+        return all_concepts_in_subtree
+
+    _traverse(hierarchy)
+    return children_map
 
 
 class BuildMapPipeline:
-    def __init__(
-        self,
-        client: AsyncOpenAI,
-        model: str,
-    ):
+    """
+    LLM pipeline for constructing a knowledge maps.
+
+    Works by orchestrating multiple micro-agents. Each micro-agent is responsible for a specific step in the pipeline, such as:
+    - Extracting concepts and organizing them hierarchically (combined)
+    - Restoring sources
+    - Linking related concepts
+    - Generating short descriptions
+    """
+
+    def __init__(self, client: AsyncOpenAI, model: str, model_lite: str):
         self._client: AsyncOpenAI = client
         self._model: str = model
+        self._model_lite: str = model_lite
 
     async def _build_hierarchy(
         self,
         material: dict[str, str],
         language: str,
-    ) -> tuple[list[ChatCompletionMessageParam], ConceptsHierarchy]:
-        messages = step_one_hierarchy_prompt(
+    ) -> ConceptHierarchyModel:
+        sources = get_allowed_sources(material)
+        messages = hierarchy_with_sources_prompt(
             material=material,
+            allowed_sources=sources,
             language=language,
-            response_model=ConceptsHierarchy,
+            response_model=ConceptHierarchyModel,
         )
 
         response = await self._client.chat.completions.parse(
             model=self._model,
             messages=messages,
-            response_format=ConceptsHierarchy,
+            response_format=ConceptHierarchyModel,
             temperature=0.0,
             seed=42,
+            max_tokens=4096,
         )
 
         message = response.choices[0].message
         assert message.parsed
         assert message.content
 
-        messages += [{'role': 'assistant', 'content': message.content}]
-
-        return (
-            messages,  # pyright: ignore[reportReturnType]
-            message.parsed,
+        hierarchy_with_sources = message.parsed
+        hierarchy_with_sources.hierarchy = clear_sources(
+            hierarchy_with_sources.hierarchy, allowed_sources=sources
         )
 
-    async def _add_sources(
-        self,
-        messages: list[ChatCompletionMessageParam],
-        concepts: Iterable[str],
-        material: dict[str, str],
-    ) -> tuple[list[ChatCompletionMessageParam], ConceptSources]:
-        messages += step_two_add_sources(response_model=ConceptSources)
+        return hierarchy_with_sources
 
-        response = await self._client.chat.completions.parse(
-            model=self._model,
-            messages=messages,
-            response_format=ConceptSources,
-            temperature=0.0,
-            seed=42,
-        )
+    # async def _add_sources(
+    #    self,
+    #    messages: list[ChatCompletionMessageParam],
+    #    concepts: Iterable[str],
+    #    material: dict[str, str],
+    # ) -> ConceptSources:
+    #    messages += step_two_add_sources(response_model=ConceptSources)
 
-        message = response.choices[0].message
-        assert message.parsed
-        assert message.content
+    #    response = await self._client.chat.completions.parse(
+    #        model=self._model,
+    #        messages=messages,
+    #        response_format=ConceptSources,
+    #        temperature=0.0,
+    #        seed=42,
+    #    )
 
-        sources = message.parsed
-        allowed_sources = get_allowed_sources(material)
-        for concept in list(sources.sources):
-            if concept not in concepts or sources.sources[concept] not in allowed_sources:
-                sources.sources.pop(concept)
+    #    message = response.choices[0].message
+    #    assert message.parsed
+    #    assert message.content
 
-        messages += [{'role': 'assistant', 'content': sources.model_dump_json()}]
-
-        return (
-            messages,  # pyright: ignore[reportReturnType]
-            message.parsed,
-        )
+    #    sources = message.parsed
+    #    print(sources)
+    #    allowed_sources = get_allowed_sources(material)
+    #    print(allowed_sources)
+    #    for concept in list(sources.sources):
+    #        source = sources.sources[concept].replace(' ', '-')
+    #        if concept not in concepts or source not in allowed_sources:
+    #            sources.sources.pop(concept)
+    #        else:
+    #            sources.sources[concept] = source
+    #    print(sources)
+    #    return sources
 
     async def _link_related(
-        self, hierarchy: ConceptsHierarchy, messages: list[ChatCompletionMessageParam]
-    ) -> tuple[list[ChatCompletionMessageParam], RelatedConcepts]:
+        self, hierarchy: ConceptHierarchy, messages: list[ChatCompletionMessageParam]
+    ) -> RelatedConcepts:
         messages += step_three_related_concepts_prompt(response_model=RelatedConcepts)
 
         response = await self._client.chat.completions.parse(
@@ -271,18 +334,29 @@ class BuildMapPipeline:
         related = message.parsed
         clean_related_concepts(hierarchy, related)
 
-        messages += [{'role': 'assistant', 'content': related.model_dump_json()}]
-
-        return (
-            messages,  # pyright: ignore[reportReturnType]
-            message.parsed,
-        )
+        return message.parsed
 
     async def build(self, material: dict[str, str], language: str = 'ru'):
-        messages, hierarchy = await self._build_hierarchy(material, language=language)
-        concepts = set(flatten_hierarchy(hierarchy.hierarchy))
-        messages, sources = await self._add_sources(messages, concepts, material)
-        messages, related = await self._link_related(hierarchy, messages)
+        """
+        Build a complete knowledge map from educational material.
+
+        Parameters
+        ----------
+        material : dict[str, str]
+            Dictionary mapping source names to their content
+        language : str, default='ru'
+            Language code for processing
+
+        Returns
+        -------
+        KnowledgeMap
+            Complete knowledge map with hierarchical concepts, sources, and relationships
+        """
+        hierarchy = await self._build_hierarchy(material, language=language)
+        # concepts = set(flatten_hierarchy(hierarchy.hierarchy))
+        # sources = await self._add_sources(messages, concepts, material)
+        # related = await self._link_related(hierarchy, messages)
+        return hierarchy
 
         def build_concepts(node: str | dict) -> list[Concept]:
             match node:
@@ -314,6 +388,13 @@ class BuildMapPipeline:
 
 
 class Concept(BaseModel):
+    """
+    A single concept in the knowledge map.
+
+    Represents an individual learning concept with its metadata including
+    relationships to other concepts and source attribution.
+    """
+
     title: str
     description: str | None
     related: list[str] | None
@@ -323,4 +404,11 @@ class Concept(BaseModel):
 
 
 class KnowledgeMap(BaseModel):
+    """
+    Complete knowledge map containing all concepts and their relationships.
+
+    The root container for a structured representation of educational content
+    organized into hierarchical concepts with cross-references and source links.
+    """
+
     concepts: list[Concept]
