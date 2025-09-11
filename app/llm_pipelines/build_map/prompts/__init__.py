@@ -40,19 +40,19 @@ def hierarchy_with_sources_prompt(
     ]
 
 
-def step_two_related_concepts_prompt(
-    *, response_model: type[BaseModel]
+def related_concepts_prompt(
+    *, concepts: list[str], response_model: type[BaseModel]
 ) -> list[ChatCompletionMessageParam]:
     """Creates prompt for linking related concepts"""
-    step_three_template = jinja_env.get_template('step-3-related-concepts.md.jinja')
+    step_three_template = jinja_env.get_template('related-concepts.md.jinja')
     return [
         {
             'role': 'user',
             'content': step_three_template.render(
-                json_schema=response_model.model_json_schema()
+                concepts=concepts, json_schema=response_model.model_json_schema()
             ),
         }
     ]
 
 
-__all__ = ['hierarchy_with_sources_prompt', 'step_three_related_concepts_prompt']
+__all__ = ['hierarchy_with_sources_prompt', 'related_concepts_prompt']
