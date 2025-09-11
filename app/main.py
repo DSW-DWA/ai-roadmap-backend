@@ -1,16 +1,15 @@
-from typing import List
+import json
+from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
 from app.llm_pipelines import BuildMapPipeline
 from app.llm_pipelines.edit_map.pipeline import EditMapPipeline
+from app.llm_pipelines.models import KnowledgeMap
 from app.settings import settings
 
-from .logic import rewrite_roadmap_with_prompt
-from .models import RewriteRequest, Roadmap
 from .utils import extract_text_blobs_to_dict, validate_files
 
 client = AsyncOpenAI(
@@ -22,9 +21,7 @@ build_map_pipeline = BuildMapPipeline(
     client=client, model=settings.model_name, model_lite=settings.model_name_lite
 )
 
-edit_map_pipeline = EditMapPipeline(
-    client=client, model=settings.model_name
-)
+edit_map_pipeline = EditMapPipeline(client=client, model=settings.model_name)
 
 app = FastAPI(
     title='SQL Roadmap API',
@@ -45,29 +42,41 @@ app.add_middleware(
 )
 
 
-@app.post(
-    '/roadmap/from-files', response_model=Roadmap, summary='Сгенерировать SQL-роадмап из файлов'
-)
+@app.post('/roadmap/from-files', response_model=KnowledgeMap)
 async def roadmap_from_files(
-    files: List[UploadFile] = File(..., description='До 5 файлов, ≤5 МБ каждый'),
+    files: Annotated[list[UploadFile], File(..., description='До 5 файлов, ≤5 МБ каждый')],
 ):
+    """Craete roadmap from raw materials"""
     await validate_files(files)
     material = await extract_text_blobs_to_dict(files)
     knowledge_map = await build_map_pipeline.build(material)
-    return JSONResponse(content=knowledge_map.model_dump(), status_code=status.HTTP_200_OK)
+    return knowledge_map.model_dump()
 
 
-@app.post('/roadmap/rewrite', response_model=Roadmap, summary='Переписать роадмап по промпту')
-async def roadmap_rewrite(files: List[UploadFile] = File(..., description='До 5 файлов, ≤5 МБ каждый'), payload: RewriteRequest):
+@app.post(
+    '/roadmap/rewrite', response_model=KnowledgeMap, summary='Переписать роадмап по промпту'
+)
+async def roadmap_rewrite(
+    knowledge_map: str,
+    user_query: str,
+    files: Annotated[list[UploadFile], File(..., description='До 5 файлов, ≤5 МБ каждый')],
+):
+    """Edit knowledge map by user prompt"""
     try:
+        knowledge_map_model = KnowledgeMap(**json.loads(knowledge_map))
         await validate_files(files)
         material = await extract_text_blobs_to_dict(files)
-        updated_knowledge_map = edit_map_pipeline.edit(material, payload.knowledge_map, payload.user_query)
-        return JSONResponse(content=updated_knowledge_map.model_dump(), status_code=status.HTTP_200_OK)
+        updated_knowledge_map = edit_map_pipeline.edit(
+            material, knowledge_map_model, user_query
+        )
+        return updated_knowledge_map
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f'Не удалось переписать роадмап: {e}')
+        raise HTTPException(
+            status_code=400, detail=f'Не удалось переписать роадмап: {e}'
+        ) from e
 
 
 @app.get('/', include_in_schema=False)
 async def root():
+    """Redirect to docs on root"""
     return {'ok': True, 'see': '/docs'}
