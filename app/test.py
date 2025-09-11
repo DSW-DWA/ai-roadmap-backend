@@ -3,6 +3,7 @@ import asyncio
 from openai import AsyncOpenAI
 
 from app.llm_pipelines import BuildMapPipeline
+from app.llm_pipelines.edit_map.pipeline import EditMapPipeline
 
 from .settings import settings
 
@@ -24,6 +25,19 @@ async def test():
     )
     knowledge_map = await build_map_pipeline.build(material)
     print(knowledge_map.model_dump_json(exclude_none=True))
+
+    edit_map_pipeline = EditMapPipeline(client=client, model=settings.model_name)
+    new_map = await edit_map_pipeline.edit(
+        material,
+        knowledge_map,
+        """
+        Измени каждое описание так, чтобы оно содержало слова и словосочетания:
+        пельмени, база, базовый, составляющая, штучка, синхронизация,
+        соответственно, провалится, как бог на душу положит, отказоустойчивость,
+        правая тройка векторов, дай бог, как душе угодно, литературно, выпадение из контекста.
+        """,
+    )
+    print(new_map.model_dump_json())
 
 
 asyncio.run(test())
