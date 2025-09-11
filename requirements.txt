@@ -23,3 +23,4 @@ Jinja2==3.1.6
 python-iso639==2025.2.18
 openai==1.106.1
 pydantic-settings==2.10.1
+markitdown==0.1.3
