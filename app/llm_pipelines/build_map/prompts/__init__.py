@@ -1,7 +1,6 @@
 """Prompts for knowledge map generation pipeline"""
 
 import pathlib
-from typing import Any
 
 from iso639 import Language
 from jinja2 import Environment, FileSystemLoader, StrictUndefined

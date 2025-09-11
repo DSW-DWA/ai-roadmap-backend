@@ -9,7 +9,6 @@ from app.llm_pipelines.build_map.prompts import (
     add_description_prompt,
     hierarchy_with_sources_prompt,
     related_concepts_prompt,
-    # step_two_add_sources,
 )
 
 type ConceptHierarchy = dict[str, 'ConceptHierarchyNode']
