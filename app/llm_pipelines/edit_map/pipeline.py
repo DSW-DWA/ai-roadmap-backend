@@ -168,7 +168,7 @@ class EditMapPipeline:
             response_format=KnowledgeMap,
             temperature=0.0,
             seed=42,
-            max_tokens=4096,
+            max_tokens=8192,
         )
 
         message = response.choices[0].message

@@ -251,7 +251,7 @@ class BuildMapPipeline:
             response_format=ConceptHierarchyModel,
             temperature=0.0,
             seed=42,
-            max_tokens=4096,
+            max_tokens=8192,
         )
 
         message = response.choices[0].message
