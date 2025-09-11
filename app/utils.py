@@ -1,6 +1,10 @@
+import io
 from typing import Dict, List
 
 from fastapi import HTTPException, UploadFile, status
+from markitdown import MarkItDown
+
+md = MarkItDown()
 
 MAX_FILES = 5
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -40,20 +44,28 @@ async def extract_text_blobs(files: List[UploadFile]) -> List[str]:
     blobs = []
     for f in files:
         name = (f.filename or '').lower()
-        if (
-            name.endswith('.txt')
-            or name.endswith('.md')
-            or name.endswith('.csv')
-            or name.endswith('.sql')
-        ):
-            data = await f.read()
+
+        content = await f.read()
+        await f.seek(0)  # Reset for potential reuse
+
+        if name.endswith(('.txt', '.md', '.csv', '.sql')):
             try:
-                text = data.decode('utf-8', errors='ignore')
+                text = content.decode('utf-8', errors='ignore')
             except Exception:
                 text = ''
             blobs.append(text[:200_000])
+        # Use MarkItDown for other types (PDF, DOCX, PPTX, etc.)
         else:
-            blobs.append(f'FILE:{f.filename}')
+            byte_stream = io.BytesIO(content)
+            try:
+                result = md.convert_stream(byte_stream, filename=f.filename)
+                if result and result.text_content:
+                    blobs.append(result.text_content[:200_000])
+                else:
+                    blobs.append(f"FILE:{f.filename} (no readable content)")
+            except Exception as e:
+                blobs.append(f"FILE:{f.filename} (conversion failed: {str(e)})")
+
     return blobs
 
 
@@ -67,19 +79,24 @@ async def extract_text_blobs_to_dict(files: List[UploadFile]) -> Dict[str, str]:
 
     for f in files:
         name = (f.filename or '').lower()
-        if (
-            name.endswith('.txt')
-            or name.endswith('.md')
-            or name.endswith('.csv')
-            or name.endswith('.sql')
-        ):
-            data = await f.read()
+        content = await f.read()
+        await f.seek(0)
+
+        if name.endswith(('.txt', '.md', '.csv', '.sql')):
             try:
-                text = data.decode('utf-8', errors='ignore')
+                text = content.decode('utf-8', errors='ignore')
             except Exception:
                 text = ''
             material_dict[f.filename] = text[:200_000]
         else:
-            material_dict[f.filename] = f'FILE:{f.filename}'
+            byte_stream = io.BytesIO(content)
+            try:
+                result = md.convert_stream(byte_stream, filename=f.filename)
+                if result and result.text_content:
+                    material_dict[f.filename] = result.text_content[:200_000]
+                else:
+                    material_dict[f.filename] = f"FILE:{f.filename} (no readable content)"
+            except Exception as e:
+                material_dict[f.filename] = f"FILE:{f.filename} (conversion failed: {str(e)})"
 
     return material_dict

@@ -17,7 +17,7 @@ client = AsyncOpenAI(
     base_url=str(settings.openai_base_url),
 )
 
-build_map_pipeline = BuildMapPipeline(client=client, model=settings.model_name)
+build_map_pipeline = BuildMapPipeline(client=client, model=settings.model_name, model_lite=settings.model_name_lite)
 
 app = FastAPI(
     title='SQL Roadmap API',
