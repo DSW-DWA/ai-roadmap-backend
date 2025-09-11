@@ -62,9 +62,9 @@ async def extract_text_blobs(files: List[UploadFile]) -> List[str]:
                 if result and result.text_content:
                     blobs.append(result.text_content[:200_000])
                 else:
-                    blobs.append(f"FILE:{f.filename} (no readable content)")
+                    blobs.append(f'FILE:{f.filename} (no readable content)')
             except Exception as e:
-                blobs.append(f"FILE:{f.filename} (conversion failed: {str(e)})")
+                blobs.append(f'FILE:{f.filename} (conversion failed: {str(e)})')
 
     return blobs
 
@@ -95,8 +95,8 @@ async def extract_text_blobs_to_dict(files: List[UploadFile]) -> Dict[str, str]:
                 if result and result.text_content:
                     material_dict[f.filename] = result.text_content[:200_000]
                 else:
-                    material_dict[f.filename] = f"FILE:{f.filename} (no readable content)"
+                    material_dict[f.filename] = f'FILE:{f.filename} (no readable content)'
             except Exception as e:
-                material_dict[f.filename] = f"FILE:{f.filename} (conversion failed: {str(e)})"
+                material_dict[f.filename] = f'FILE:{f.filename} (conversion failed: {str(e)})'
 
     return material_dict

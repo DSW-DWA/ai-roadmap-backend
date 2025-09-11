@@ -1,5 +1,4 @@
 import asyncio
-import re
 from inspect import cleandoc
 
 from openai import AsyncOpenAI
@@ -10,6 +9,8 @@ from app.llm_pipelines.build_map.prompts import (
     hierarchy_with_sources_prompt,
     related_concepts_prompt,
 )
+from app.llm_pipelines.models import Concept, KnowledgeMap
+from app.llm_pipelines.utils import format_header, get_allowed_sources
 
 type ConceptHierarchy = dict[str, 'ConceptHierarchyNode']
 
@@ -55,68 +56,6 @@ class RelatedConcepts(BaseModel):
             This is used to mark cross-hierarchical relationship.
         """)
     )
-
-
-def format_header(header: str) -> str:
-    """Convert header into slug for source"""
-    return header.replace(' ', '').replace('(', '').replace(')', '')
-
-
-def get_markdown_header_paths(markdown_text: str) -> list[str]:
-    """
-    Parses a markdown string to find all header lines and returns a list of slash-separated paths for the leaf headers.
-
-    A header is considered a "leaf" if it is not immediately followed by a
-    header of a deeper level.
-    """
-
-    header_pattern = re.compile(r'^(#{1,6})\s+(.*)', re.MULTILINE)
-    matches = header_pattern.finditer(markdown_text)
-
-    headers = []
-    for match in matches:
-        level = len(match.group(1))
-        text = match.group(2).strip().replace(' ', '-')
-        headers.append({'level': level, 'text': text})
-
-    if not headers:
-        return []
-
-    result_paths = []
-    current_path = []
-
-    for i, header in enumerate(headers):
-        level = header['level']
-        text = header['text']
-
-        while len(current_path) >= level:
-            current_path.pop()
-        current_path.append(text)
-
-        is_leaf = False
-        is_last_header = i == len(headers) - 1
-
-        if is_last_header:
-            is_leaf = True
-        else:
-            next_header_level = headers[i + 1]['level']
-            if next_header_level <= level:
-                is_leaf = True
-
-        if is_leaf:
-            result_paths.append('/'.join(map(format_header, current_path)))
-
-    return result_paths
-
-
-def get_allowed_sources(material):
-    """Get all possible sources from material, both in {filename} and {filename}#{header_path} format"""
-    values = list(material.keys())
-    for name, content in material.items():
-        for header_path in get_markdown_header_paths(content):
-            values.append(f'{name}#{header_path}')
-
-    return values
 
 
 def preprocess_hierarchy(
@@ -312,7 +251,7 @@ class BuildMapPipeline:
             response_format=ConceptHierarchyModel,
             temperature=0.0,
             seed=42,
-            max_tokens=4096,
+            max_tokens=8192,
         )
 
         message = response.choices[0].message
@@ -444,30 +383,3 @@ class BuildMapPipeline:
         final_concepts = _convert_hierarchy_to_concepts(hierarchy.hierarchy, related.related)
 
         return KnowledgeMap(concepts=final_concepts)
-
-
-class Concept(BaseModel):
-    """
-    A single concept in the knowledge map.
-
-    Represents an individual learning concept with its metadata including
-    relationships to other concepts and source attribution.
-    """
-
-    title: str
-    description: str | None
-    related: list[str] | None
-    source: list[str] | None
-
-    consist_of: list['Concept'] | None
-
-
-class KnowledgeMap(BaseModel):
-    """
-    Complete knowledge map containing all concepts and their relationships.
-
-    The root container for a structured representation of educational content
-    organized into hierarchical concepts with cross-references and source links.
-    """
-
-    concepts: list[Concept]
