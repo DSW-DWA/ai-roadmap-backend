@@ -5,11 +5,13 @@ from inspect import cleandoc
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
-from app.llm_pipelines.build_map.prompts import (
+from app.llm_pipelines.edit_map.prompts import (
     add_description_prompt,
     hierarchy_with_sources_prompt,
     related_concepts_prompt,
 )
+
+from models import KnowledgeMap
 
 type ConceptHierarchy = dict[str, 'ConceptHierarchyNode']
 
@@ -276,9 +278,9 @@ def preprocess_related(
     return related.model_copy(update={'related': new_related})
 
 
-class BuildMapPipeline:
+class EditMapPipeline:
     """
-    LLM pipeline for constructing a knowledge maps.
+    LLM pipeline for editing a knowledge maps.
 
     Works by orchestrating multiple micro-agents. Each micro-agent is responsible for a specific step in the pipeline, such as:
     - Extracting concepts and organizing them hierarchically (combined)
@@ -296,11 +298,14 @@ class BuildMapPipeline:
     async def _build_hierarchy(
         self,
         material: dict[str, str],
+        knowledge_map: KnowledgeMap,
+        user_query: str,
         language: str,
     ) -> ConceptHierarchyModel:
         sources = get_allowed_sources(material)
         messages = hierarchy_with_sources_prompt(
-            material=material,
+            knowledge_map=knowledge_map,
+            user_query=user_query,
             allowed_sources=sources,
             language=language,
             response_model=ConceptHierarchyModel,
