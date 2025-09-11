@@ -4,15 +4,14 @@ from openai import AsyncOpenAI
 
 from app.llm_pipelines import BuildMapPipeline
 from app.llm_pipelines.edit_map.pipeline import EditMapPipeline
+from app.settings import settings
 
-from .settings import settings
 
-
-async def test():
-    with open('distributed_systems.md') as file:
+async def basic_example():
+    with open('example_data/distributed_systems.md') as file:
         material = {'distributed_systems.md': file.read()}
 
-    with open('k8s.md') as file:
+    with open('example_data/k8s.md') as file:
         material |= {'k8s.md': file.read()}
 
     client = AsyncOpenAI(
@@ -40,4 +39,4 @@ async def test():
     print(new_map.model_dump_json())
 
 
-asyncio.run(test())
+asyncio.run(basic_example())
