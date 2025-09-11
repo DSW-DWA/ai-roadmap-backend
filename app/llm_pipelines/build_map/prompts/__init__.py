@@ -22,7 +22,7 @@ def hierarchy_with_sources_prompt(
     """Creates prompt for hierarchical concepts extraction."""
 
     system_template = jinja_env.get_template('system.md.jinja')
-    step_one_template = jinja_env.get_template('hierarchy-with-sources.md.jinja')
+    user_template = jinja_env.get_template('hierarchy-with-sources.md.jinja')
     language_name = Language.match(language).name
     json_schema = response_model.model_json_schema()
 
@@ -33,7 +33,7 @@ def hierarchy_with_sources_prompt(
         },
         {
             'role': 'user',
-            'content': step_one_template.render(
+            'content': user_template.render(
                 material=material, json_schema=json_schema, allowed_sources=allowed_sources
             ),
         },
@@ -41,18 +41,53 @@ def hierarchy_with_sources_prompt(
 
 
 def related_concepts_prompt(
-    *, concepts: list[str], response_model: type[BaseModel]
+    *, concepts: list[str], response_model: type[BaseModel], language: str
 ) -> list[ChatCompletionMessageParam]:
     """Creates prompt for linking related concepts"""
-    step_three_template = jinja_env.get_template('related-concepts.md.jinja')
+    system_template = jinja_env.get_template('system.md.jinja')
+    user_template = jinja_env.get_template('related-concepts.md.jinja')
+    language_name = Language.match(language).name
     return [
         {
+            'role': 'system',
+            'content': system_template.render(language=language_name),
+        },
+        {
             'role': 'user',
-            'content': step_three_template.render(
+            'content': user_template.render(
                 concepts=concepts, json_schema=response_model.model_json_schema()
             ),
-        }
+        },
     ]
 
 
-__all__ = ['hierarchy_with_sources_prompt', 'related_concepts_prompt']
+def add_description_prompt(
+    *,
+    material: dict[str, str],
+    concept: str,
+    parent_concepts: list[str] | None,
+    related_concepts: list[str] | None,
+    language: str,
+) -> list[ChatCompletionMessageParam]:
+    """Creates prompt for generating concepts description"""
+    system_template = jinja_env.get_template('system.md.jinja')
+    user_template = jinja_env.get_template('add-description.md.jinja')
+    language_name = Language.match(language).name
+    return [
+        {
+            'role': 'system',
+            'content': system_template.render(language=language_name),
+        },
+        {
+            'role': 'user',
+            'content': user_template.render(
+                material=material,
+                concept=concept,
+                related_concepts=related_concepts,
+                parent_concepts=parent_concepts,
+            ),
+        },
+    ]
+
+
+__all__ = ['hierarchy_with_sources_prompt', 'related_concepts_prompt', 'add_description_prompt']
