@@ -66,7 +66,7 @@ async def roadmap_rewrite(
         knowledge_map_model = KnowledgeMap(**json.loads(knowledge_map))
         await validate_files(files)
         material = await extract_text_blobs_to_dict(files)
-        updated_knowledge_map = edit_map_pipeline.edit(
+        updated_knowledge_map = await edit_map_pipeline.edit(
             material, knowledge_map_model, user_query
         )
         return updated_knowledge_map
