@@ -15,6 +15,7 @@ from .utils import extract_text_blobs_to_dict, validate_files
 client = AsyncOpenAI(
     api_key=settings.yandex_cloud_api_key,
     base_url=str(settings.openai_base_url),
+    timeout=3600
 )
 
 build_map_pipeline = BuildMapPipeline(
