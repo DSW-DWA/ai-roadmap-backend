@@ -1,7 +1,7 @@
 import json
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 
@@ -58,8 +58,8 @@ async def roadmap_from_files(
     '/roadmap/rewrite', response_model=KnowledgeMap, summary='Переписать роадмап по промпту'
 )
 async def roadmap_rewrite(
-    knowledge_map: str,
-    user_query: str,
+    knowledge_map: Annotated[str, Form()],
+    user_query: Annotated[str, Form()],
     files: Annotated[list[UploadFile], File(..., description='До 5 файлов, ≤5 МБ каждый')],
 ):
     """Edit knowledge map by user prompt"""
@@ -67,7 +67,7 @@ async def roadmap_rewrite(
         knowledge_map_model = KnowledgeMap(**json.loads(knowledge_map))
         await validate_files(files)
         material = await extract_text_blobs_to_dict(files)
-        updated_knowledge_map = edit_map_pipeline.edit(
+        updated_knowledge_map = await edit_map_pipeline.edit(
             material, knowledge_map_model, user_query
         )
         return updated_knowledge_map
